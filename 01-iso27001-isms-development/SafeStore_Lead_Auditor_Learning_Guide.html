@@ -1,0 +1,804 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SafeStore Audit Walkthrough</title>
+<style>
+:root{
+  --bg:#f7f6f2; --surface:#ffffff; --surface-2:#f0eee8; --text:#1d1f24; --muted:#5b616e;
+  --border:#dcd9d0; --accent:#1f5fa8; --accent-soft:#e3edf8; --good:#1e7a4c; --good-soft:#e2f3ea;
+  --warn:#9a5b00; --warn-soft:#fbefd9; --bad:#a63a2e; --bad-soft:#f8e3e0; --term:#6a3fa0; --term-soft:#efe7f8;
+  --code:#eceae3; --shadow:0 1px 3px rgba(0,0,0,.08);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#15171b; --surface:#1d2026; --surface-2:#252932; --text:#e8e9ec; --muted:#a3a9b6;
+    --border:#343a45; --accent:#7fb2ee; --accent-soft:#1f2d40; --good:#6fd19c; --good-soft:#18302a;
+    --warn:#f0b75a; --warn-soft:#342a17; --bad:#f08a7c; --bad-soft:#3a201d; --term:#c6a6f0; --term-soft:#2c2340;
+    --code:#2a2e37; --shadow:0 1px 3px rgba(0,0,0,.4);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#15171b; --surface:#1d2026; --surface-2:#252932; --text:#e8e9ec; --muted:#a3a9b6;
+  --border:#343a45; --accent:#7fb2ee; --accent-soft:#1f2d40; --good:#6fd19c; --good-soft:#18302a;
+  --warn:#f0b75a; --warn-soft:#342a17; --bad:#f08a7c; --bad-soft:#3a201d; --term:#c6a6f0; --term-soft:#2c2340;
+  --code:#2a2e37; --shadow:0 1px 3px rgba(0,0,0,.4);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.65 "Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif}
+a{color:var(--accent)}
+.layout{display:grid;grid-template-columns:280px minmax(0,1fr);min-height:100vh}
+nav.side{position:sticky;top:0;height:100vh;overflow:auto;background:var(--surface);border-right:1px solid var(--border);padding:20px 16px}
+nav.side h2{font-size:15px;margin:0 0 4px}
+nav.side .sub{font-size:13px;color:var(--muted);margin-bottom:14px}
+nav.side ol{list-style:none;padding:0;margin:0}
+nav.side li a{display:flex;gap:8px;align-items:center;padding:6px 8px;border-radius:6px;text-decoration:none;color:var(--text);font-size:14px}
+nav.side li a:hover{background:var(--surface-2)}
+nav.side li a.active{background:var(--accent-soft);color:var(--accent);font-weight:600}
+nav.side li a .tick{width:16px;text-align:center;color:var(--good);font-weight:700}
+.progress{height:6px;background:var(--surface-2);border-radius:4px;overflow:hidden;margin:6px 0 4px}
+.progress div{height:100%;background:var(--good);width:0;transition:width .3s}
+.ptext{font-size:12px;color:var(--muted);margin-bottom:12px}
+.tools{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+button{font:inherit;font-size:13px;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);cursor:pointer}
+button:hover{border-color:var(--accent)}
+main{padding:32px 48px 80px;max-width:980px}
+.mobilebar{display:none}
+section.ch{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:28px 32px;margin-bottom:28px;box-shadow:var(--shadow)}
+h1{font-size:30px;line-height:1.25;margin:0 0 8px}
+h2.ct{font-size:24px;margin:0 0 6px}
+.kicker{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);font-weight:700}
+h3{font-size:19px;margin:28px 0 8px}
+h4{font-size:16px;margin:20px 0 6px}
+p{margin:10px 0}
+.lead{font-size:18px;color:var(--muted)}
+table{border-collapse:collapse;width:100%;margin:12px 0;font-size:14.5px}
+th,td{border:1px solid var(--border);padding:8px 10px;text-align:left;vertical-align:top}
+th{background:var(--surface-2)}
+.tw{overflow-x:auto}
+.box{border-radius:10px;padding:14px 16px;margin:14px 0;border:1px solid var(--border)}
+.box b.lbl{display:block;font-size:12px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px}
+.learn{background:var(--accent-soft);border-color:transparent}
+.learn b.lbl{color:var(--accent)}
+.why{background:var(--good-soft);border-color:transparent}
+.why b.lbl{color:var(--good)}
+.trap{background:var(--warn-soft);border-color:transparent}
+.trap b.lbl{color:var(--warn)}
+.mistake{background:var(--bad-soft);border-color:transparent}
+.mistake b.lbl{color:var(--bad)}
+details{border:1px solid var(--border);border-radius:10px;margin:12px 0;background:var(--surface)}
+details summary{cursor:pointer;padding:10px 14px;font-weight:600;list-style:none}
+details summary::before{content:"▸ ";color:var(--accent)}
+details[open] summary::before{content:"▾ "}
+details .in{padding:0 16px 12px}
+.steps{counter-reset:s;list-style:none;padding:0}
+.steps>li{counter-increment:s;position:relative;padding-left:40px;margin:12px 0}
+.steps>li::before{content:counter(s);position:absolute;left:0;top:1px;width:28px;height:28px;border-radius:50%;background:var(--accent);color:var(--bg);display:grid;place-items:center;font-weight:700;font-size:14px}
+.t{color:var(--term);border-bottom:1.5px dotted var(--term);cursor:help;white-space:normal}
+.t:focus{outline:2px solid var(--term);outline-offset:2px;border-radius:2px}
+#pop{position:absolute;z-index:50;max-width:340px;background:var(--surface);border:1px solid var(--term);border-radius:10px;padding:12px 14px;box-shadow:0 6px 24px rgba(0,0,0,.18);font-size:14px;display:none}
+#pop b{color:var(--term)}
+code,.mono{font-family:Consolas,"Courier New",monospace;background:var(--code);padding:1px 5px;border-radius:4px;font-size:.92em}
+.pill{display:inline-block;font-size:12px;padding:1px 8px;border-radius:999px;font-weight:600}
+.p-maj{background:var(--bad-soft);color:var(--bad)}
+.p-min{background:var(--warn-soft);color:var(--warn)}
+.p-ofi{background:var(--accent-soft);color:var(--accent)}
+.p-ok{background:var(--good-soft);color:var(--good)}
+.done-row{display:flex;justify-content:flex-end;margin-top:18px}
+.done-row label{display:flex;gap:8px;align-items:center;font-size:14px;color:var(--muted);cursor:pointer}
+.flow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:12px 0}
+.flow span.n{background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:14px}
+.flow span.a{color:var(--muted)}
+#gsearch{width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface-2);color:var(--text);font:inherit;margin:8px 0 14px}
+dl.gl dt{font-weight:700;color:var(--term);margin-top:12px}
+dl.gl dd{margin:2px 0 0 0}
+.quiz .q{border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin:12px 0}
+.quiz .opts button{display:block;width:100%;text-align:left;margin:6px 0;font-size:14.5px}
+.quiz .opts button.right{background:var(--good-soft);border-color:var(--good)}
+.quiz .opts button.wrong{background:var(--bad-soft);border-color:var(--bad)}
+.quiz .fb{font-size:14px;margin-top:6px;color:var(--muted)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.card{border:1px solid var(--border);border-radius:10px;padding:12px 14px;background:var(--surface)}
+.card h4{margin-top:0}
+small.src{color:var(--muted)}
+@media (max-width:900px){
+  .layout{display:block}
+  nav.side{position:fixed;inset:0 25% 0 0;max-width:320px;z-index:40;transform:translateX(-105%);transition:transform .2s;height:100vh}
+  nav.side.open{transform:none;box-shadow:0 0 40px rgba(0,0,0,.3)}
+  .mobilebar{display:flex;position:sticky;top:0;z-index:30;background:var(--surface);border-bottom:1px solid var(--border);padding:10px 16px;gap:10px;align-items:center}
+  main{padding:16px 16px 60px}
+  section.ch{padding:18px 16px}
+  h1{font-size:24px}
+  .grid2{grid-template-columns:1fr}
+}
+@media print{nav.side,.mobilebar,.done-row,.tools{display:none}.layout{display:block}section.ch{box-shadow:none;break-inside:auto}details{display:block}details .in{display:block}}
+</style>
+</head>
+<body>
+<div class="mobilebar"><button id="menuBtn" aria-label="Open chapters">☰ Chapters</button><strong>SafeStore Audit Walkthrough</strong></div>
+<div class="layout">
+<nav class="side" id="side">
+  <h2>SafeStore Audit Walkthrough</h2>
+  <div class="sub">ISO/IEC 27001 Lead Auditor case study, explained from zero</div>
+  <div class="progress"><div id="pbar"></div></div>
+  <div class="ptext" id="ptext">0 of 0 chapters done</div>
+  <ol id="toc"></ol>
+  <div class="tools">
+    <button id="themeBtn">Toggle theme</button>
+    <button onclick="window.print()">Print</button>
+    <button id="resetBtn">Reset progress</button>
+  </div>
+</nav>
+<main>
+
+<!-- ============================================================ 0 -->
+<section class="ch" id="start" data-title="Start here">
+  <div class="kicker">Chapter 0</div>
+  <h1>How I solved the SafeStore Lead Auditor assessment – and how you can too</h1>
+  <p class="lead">This guide walks you through a full <span class="t" data-k="iso27001">ISO/IEC 27001</span> certification audit from start to finish. You will see every document I opened, why I opened it, what I looked for, and how each answer in the five workbooks was reached.</p>
+
+  <h3>How to use this guide</h3>
+  <ul>
+    <li><b>Purple dotted words</b> are technical terms. Click or tap one (or press Enter on it) for a plain-English explanation. Every term is also in the <a href="#glossary">Glossary</a>.</li>
+    <li><b>Blue "Learn" boxes</b> teach a concept. <b>Green "Why" boxes</b> explain my reasoning. <b>Amber "Trap" boxes</b> warn about common mistakes. <b>Red "My mistake" boxes</b> show errors I made and fixed – auditors learn from these too.</li>
+    <li>Click <b>"How I got this answer"</b> panels to open the detailed reasoning.</li>
+    <li>Tick <b>"Mark chapter as done"</b> at the end of each chapter to track your progress. This is saved only in this browser.</li>
+  </ul>
+
+  <h3>The big picture in one minute</h3>
+  <p>A company called <b>SafeStore</b> wants a certificate saying its <span class="t" data-k="isms">ISMS</span> meets the ISO/IEC 27001 standard. An independent <span class="t" data-k="cb">certification body</span> sends three auditors to check. You play the <span class="t" data-k="lead-auditor">Lead Auditor</span>. The assessment has five parts that follow the real life cycle of an audit:</p>
+  <div class="flow">
+    <span class="n">1. Plan</span><span class="a">→</span><span class="n">2. Lead the team</span><span class="a">→</span><span class="n">3. Conduct</span><span class="a">→</span><span class="n">4. Report &amp; close</span><span class="a">→</span><span class="n">5. Professional behaviour</span>
+  </div>
+  <p>Each part has an Excel workbook with <b>pale-yellow cells</b> to fill in. The guiding rulebook for <i>how</i> to audit is <span class="t" data-k="iso19011">ISO 19011</span>. The rulebook for <i>what</i> is checked is ISO/IEC 27001.</p>
+
+  <div class="box learn"><b class="lbl">Learn: two standards, two jobs</b>
+  <b>ISO/IEC 27001:2022</b> says what a good information-security management system must contain. It is the <span class="t" data-k="criteria">audit criteria</span>. <b>ISO 19011</b> says how to run any management-system audit well: planning, interviewing, sampling, reporting. Think of 27001 as the exam syllabus and 19011 as the examiner's handbook.</div>
+
+  <h3>My overall method (copy this)</h3>
+  <ol class="steps">
+    <li><b>Read the brief first</b> (<code>Assessment.txt</code> and the Part text file). Write down exactly what must be produced.</li>
+    <li><b>Open the workbook and map every tab.</b> Find the yellow cells, the drop-down lists and the hidden <code>_Lists</code> tab that holds the drop-down options. These options often hint at the expected answer.</li>
+    <li><b>Read every SafeStore document</b> and take notes on facts, dates, risk ratings, people and inconsistencies.</li>
+    <li><b>Answer using evidence</b> – every statement should trace back to a document.</li>
+    <li><b>Check consistency across parts.</b> Part Three findings must match the Part One plan, Part Four must match Part Three, and so on.</li>
+    <li><b>Check your work</b>: no empty yellow cells, text readable, drop-downs still working.</li>
+  </ol>
+  <div class="done-row"><label><input type="checkbox" class="done" data-id="start"> Mark chapter as done</label></div>
+</section>
+
+<!-- ============================================================ 1 -->
+<section class="ch" id="basics" data-title="ISO 27001 basics">
+  <div class="kicker">Chapter 1 · Foundations</div>
+  <h2 class="ct">ISO/IEC 27001 in plain English</h2>
+  <p>Information has three properties worth protecting, called the <span class="t" data-k="cia">CIA triad</span>: <b>Confidentiality</b> (only the right people see it), <b>Integrity</b> (it stays correct and complete) and <b>Availability</b> (it is there when needed). An <span class="t" data-k="isms">ISMS</span> is the set of policies, people, processes and technology an organisation uses to manage those risks in an organised, repeatable way.</p>
+
+  <h3>The structure of ISO/IEC 27001:2022</h3>
+  <p>Clauses 0–3 are introduction, scope, references and terms – they are not audited. <b>Clauses 4–10 are mandatory requirements</b>: an organisation cannot exclude any of them.</p>
+  <div class="tw"><table>
+    <tr><th>Clause</th><th>Name</th><th>Plain meaning</th><th>SafeStore example</th></tr>
+    <tr><td>4</td><td>Context of the organisation</td><td>Understand your business, the <span class="t" data-k="interested-parties">interested parties</span>, and decide the ISMS <span class="t" data-k="scope">scope</span>.</td><td>Scope Statement v1.0</td></tr>
+    <tr><td>5</td><td>Leadership</td><td><span class="t" data-k="top-management">Top management</span> commits, sets the policy and assigns roles.</td><td>ISMS Policy approved by the Managing Director; Roles document</td></tr>
+    <tr><td>6</td><td>Planning</td><td>Assess and treat risks (6.1), set <span class="t" data-k="objectives-is">security objectives</span> (6.2), plan changes (6.3).</td><td>Risk Assessment &amp; Treatment Plan, SoA, Objectives document</td></tr>
+    <tr><td>7</td><td>Support</td><td>Resources, competence, awareness, communication, <span class="t" data-k="documented-info">documented information</span>.</td><td>Training records, document control</td></tr>
+    <tr><td>8</td><td>Operation</td><td>Actually run the controls and carry out the risk treatment.</td><td>Backups running, access reviews happening</td></tr>
+    <tr><td>9</td><td>Performance evaluation</td><td>Monitor and measure, <span class="t" data-k="internal-audit">internal audit</span>, <span class="t" data-k="management-review">management review</span>.</td><td>Internal audit Nov 2024; management review Jan 2025</td></tr>
+    <tr><td>10</td><td>Improvement</td><td>Fix <span class="t" data-k="nc">nonconformities</span> with <span class="t" data-k="corrective-action">corrective action</span>, and keep improving.</td><td>Corrective Action Register</td></tr>
+  </table></div>
+  <p>A handy memory trick: clauses 4–10 follow <b>Plan–Do–Check–Act</b>. Clauses 4–7 are Plan, 8 is Do, 9 is Check and 10 is Act.</p>
+
+  <h3>Annex A – the control menu</h3>
+  <p><span class="t" data-k="annex-a">Annex A</span> lists <b>93 <span class="t" data-k="control">controls</span></b> in four themes. An organisation picks the ones it needs, based on its risks.</p>
+  <div class="tw"><table>
+    <tr><th>Theme</th><th>Numbers</th><th>Count</th><th>Controls in this case</th></tr>
+    <tr><td>Organisational</td><td>A.5.1 – A.5.37</td><td>37</td><td>A.5.19–A.5.22 supplier security; A.5.24–A.5.28 incidents</td></tr>
+    <tr><td>People</td><td>A.6.1 – A.6.8</td><td>8</td><td>A.6.3 awareness &amp; training</td></tr>
+    <tr><td>Physical</td><td>A.7.1 – A.7.14</td><td>14</td><td><b>A.7.14 secure disposal or re-use of equipment</b></td></tr>
+    <tr><td>Technological</td><td>A.8.1 – A.8.34</td><td>34</td><td><b>A.8.3 information access restriction</b>, <b>A.8.13 information backup</b></td></tr>
+  </table></div>
+  <div class="box trap"><b class="lbl">Trap: control numbers matter</b>Many controls were renumbered between the 2013 and 2022 editions. The deficient audit plan in this case had three wrong numbers, and spotting them was part of Part One. Always check numbers against the organisation's <span class="t" data-k="soa">Statement of Applicability</span> or the standard itself.</div>
+
+  <h3>Risk: the engine of the ISMS</h3>
+  <p>ISO 27001 is <b>risk-based</b>: you choose controls because of the risks you found. SafeStore's method:</p>
+  <ul>
+    <li><span class="t" data-k="likelihood">Likelihood</span> (1–5) × <span class="t" data-k="consequence">Consequence</span> (1–5) = risk score (1–25).</li>
+    <li>1–4 Low · 5–9 Moderate · 10–16 High · 17–25 Extreme.</li>
+    <li><span class="t" data-k="inherent-risk">Inherent risk</span> is the risk before controls. <span class="t" data-k="residual-risk">Residual risk</span> is the risk after existing controls. <span class="t" data-k="target-risk">Target risk</span> is the risk after planned treatment.</li>
+    <li>Each risk has a <span class="t" data-k="risk-owner">risk owner</span>, a <span class="t" data-k="risk-treatment">treatment</span> decision (treat, accept, share, avoid), and linked Annex A controls.</li>
+  </ul>
+  <div class="box learn"><b class="lbl">Learn: the Statement of Applicability (SoA)</b>The <span class="t" data-k="soa">SoA</span> (required by clause 6.1.3) lists all 93 Annex A controls. For each it says whether the control applies, why, and whether it is implemented. It is the bridge between the risk register and the controls. Auditors always check that the SoA and the risk register agree.</div>
+
+  <h3>How certification works</h3>
+  <div class="flow"><span class="n">Stage 1 – readiness &amp; documents</span><span class="a">→</span><span class="n">Stage 2 – implementation &amp; effectiveness</span><span class="a">→</span><span class="n">CB decision</span><span class="a">→</span><span class="n">Surveillance audits (yearly)</span><span class="a">→</span><span class="n">Recertification (every 3 years)</span></div>
+  <p><span class="t" data-k="stage1">Stage 1</span> checks that the ISMS is designed and documented and that the organisation is ready. <span class="t" data-k="stage2">Stage 2</span> – our audit – checks that the ISMS is actually <b>working</b>: are people following the documents, and do the controls achieve their purpose? The audit team only <b>recommends</b>. The <span class="t" data-k="cb">certification body</span> makes the <span class="t" data-k="cert-decision">certification decision</span>. The rules for certification bodies are in ISO/IEC 17021-1, with ISMS-specific rules in ISO/IEC 27006.</p>
+  <div class="done-row"><label><input type="checkbox" class="done" data-id="basics"> Mark chapter as done</label></div>
+</section>
+
+<!-- ============================================================ 2 -->
+<section class="ch" id="auditing" data-title="Auditing basics (ISO 19011)">
+  <div class="kicker">Chapter 2 · Foundations</div>
+  <h2 class="ct">How audits work (ISO 19011)</h2>
+
+  <h3>The 7 principles of auditing</h3>
+  <div class="tw"><table>
+    <tr><th>Principle</th><th>Plain meaning</th><th>Where it showed up</th></tr>
+    <tr><td>Integrity</td><td>Be honest, diligent and responsible.</td><td>Refusing to drop a supported finding under pressure (Part 5)</td></tr>
+    <tr><td>Fair presentation</td><td>Report truthfully and accurately – the good and the bad.</td><td>Report shows 2 conformities and 1 nonconformity</td></tr>
+    <tr><td>Due professional care</td><td>Use proper diligence and judgement.</td><td>Checking control numbers; correcting the audit date</td></tr>
+    <tr><td>Confidentiality</td><td>Protect information.</td><td>Read-only screen share, no customer data recorded</td></tr>
+    <tr><td>Independence</td><td>Be free from bias and conflicts of interest – the basis of <span class="t" data-k="impartiality">impartiality</span>.</td><td>Handling the auditor who used to work at SafeStore</td></tr>
+    <tr><td>Evidence-based approach</td><td>Conclusions must rest on verifiable <span class="t" data-k="evidence">evidence</span>.</td><td>Not relying on interviews alone</td></tr>
+    <tr><td>Risk-based approach</td><td>Focus audit effort on what matters most.</td><td>Spending most time on backup, access and disposal</td></tr>
+  </table></div>
+
+  <h3>The vocabulary of every audit</h3>
+  <div class="grid2">
+    <div class="card"><h4>Objectives</h4>What the audit is trying to achieve. Example: "determine conformity of the ISMS with ISO/IEC 27001 clauses 4–10".</div>
+    <div class="card"><h4>Scope</h4>The extent and boundaries: which locations, processes, systems and time period.</div>
+    <div class="card"><h4>Criteria</h4>What you compare evidence against: the standard, the organisation's policies, legal requirements.</div>
+    <div class="card"><h4>Evidence → Finding → Conclusion</h4>You collect <span class="t" data-k="evidence">evidence</span>, compare it with the criteria to get a <span class="t" data-k="finding">finding</span>, and combine findings into a <span class="t" data-k="conclusion">conclusion</span>.</div>
+  </div>
+  <div class="box trap"><b class="lbl">Trap: objectives vs methods</b>"Review documentation" is not an objective. It is a <b>method</b> (how you work). An objective is the <b>result</b> you are after. This was one of the errors in the deficient plan.</div>
+
+  <h3>Types of finding</h3>
+  <p>This case uses the certification body's own criteria (<code>Certification_Body_Criteria.pdf</code>):</p>
+  <div class="tw"><table>
+    <tr><th>Type</th><th>Meaning</th><th>Example in this case</th></tr>
+    <tr><td><span class="pill p-ok">Conformity</span></td><td>Evidence shows the requirement is met.</td><td>C1 access restriction; C2 backup</td></tr>
+    <tr><td><span class="pill p-min">Minor NC</span></td><td>A limited or isolated failure, not systemic, and no significant doubt about the ISMS.</td><td>N1 secure disposal</td></tr>
+    <tr><td><span class="pill p-maj">Major NC</span></td><td>A significant or systemic failure that creates substantial doubt, e.g. a required process missing completely or many related failures.</td><td>None found</td></tr>
+    <tr><td><span class="pill p-ofi">OFI</span></td><td><span class="t" data-k="ofi">Opportunity for improvement</span>: no requirement is broken, but things could be better.</td><td>Supplier review schedule; training record dating</td></tr>
+    <tr><td>Insufficient evidence</td><td>Not enough reliable evidence to decide either way – verify more first.</td><td>The undated training screenshot alone</td></tr>
+  </table></div>
+
+  <h3>Good evidence: relevant, reliable, sufficient</h3>
+  <ul>
+    <li><b>Relevant</b> – it actually relates to the criterion you are testing.</li>
+    <li><b>Reliable</b> – you can trust it. A system record you watched being generated is more reliable than an undated screenshot someone hands you.</li>
+    <li><b>Sufficient</b> – there is enough of it, from enough sources, to support a conclusion.</li>
+  </ul>
+  <div class="box learn"><b class="lbl">Learn: triangulation</b>Strong auditors confirm a fact from <b>three angles</b>: what people <i>say</i> (interview), what is <i>written</i> (documents and records), and what is <i>seen</i> (observation or a live system). In this audit, the Operations Manager said the disposal procedure was not approved, the procedure was in draft, and the three devices were seen in storage. Three angles, one conclusion.</div>
+
+  <h3>Sampling</h3>
+  <p>You cannot check everything in one day, so you take a <span class="t" data-k="sampling">sample</span> from a <span class="t" data-k="population">population</span>. ISO 19011 describes two kinds:</p>
+  <ul>
+    <li><span class="t" data-k="judgement-sampling">Judgement-based sampling</span> – the auditor chooses items using knowledge and risk. Best for small organisations and short audits.</li>
+    <li><span class="t" data-k="statistical-sampling">Statistical sampling</span> – random selection with a mathematically set size. Needs large populations and more time.</li>
+  </ul>
+  <p>Either way there is <span class="t" data-k="sampling-risk">sampling risk</span>: your sample might not represent the whole population. You reduce it by choosing samples yourself (not letting the auditee pick), weighting them to risk, and expanding the sample when you find a problem.</p>
+  <div class="done-row"><label><input type="checkbox" class="done" data-id="auditing"> Mark chapter as done</label></div>
+</section>
+
+<!-- ============================================================ 3 -->
+<section class="ch" id="case" data-title="Meet SafeStore">
+  <div class="kicker">Chapter 3 · The case</div>
+  <h2 class="ct">Meet SafeStore Pty Ltd</h2>
+  <p>SafeStore is a small Melbourne company that provides encrypted cloud storage to individuals and small businesses through a web portal and mobile app. All data is hosted in Australian data centres run by third parties.</p>
+
+  <h3>The people</h3>
+  <div class="tw"><table>
+    <tr><th>Role</th><th>Name</th><th>What they own (and why it matters to auditors)</th></tr>
+    <tr><td>Managing Director</td><td>–</td><td><span class="t" data-k="top-management">Top management</span>. Approves the policy and chairs management review. Interview for clause 5.</td></tr>
+    <tr><td>CTO</td><td>Daniel Price</td><td>ISMS owner, risk process owner, incident owner. The primary audit contact.</td></tr>
+    <tr><td>Operations Manager</td><td>Sarah Kim</td><td>Access control, backup, disposal and incident coordination. <b>Holds most of the evidence</b> – a scheduling bottleneck.</td></tr>
+    <tr><td>Customer Support Lead</td><td>–</td><td>Password resets, customer access requests, training tracking.</td></tr>
+    <tr><td>Software Developer</td><td>–</td><td>Authentication, encryption, platform access, vulnerability fixes.</td></tr>
+  </table></div>
+
+  <h3>The six risks (the heart of the risk-based audit)</h3>
+  <div class="tw"><table>
+    <tr><th>Risk</th><th>Topic</th><th>Inherent</th><th>Control effectiveness</th><th>Residual</th><th>Annex A</th><th>SoA status</th></tr>
+    <tr><td>R1</td><td>Unauthorised access</td><td>16 High</td><td>Moderate</td><td>12 High</td><td>A.5.15–18, A.8.2–3, A.8.5</td><td>Implemented</td></tr>
+    <tr><td>R2</td><td>Backup failure / data loss</td><td><b>20 Extreme</b></td><td>Effective</td><td>10 High</td><td>A.8.13–14</td><td>Implemented</td></tr>
+    <tr><td>R3</td><td>Poor incident response</td><td>16 High</td><td>Moderate</td><td>12 High</td><td>A.5.24–28</td><td>Not fully implemented</td></tr>
+    <tr><td>R4</td><td>Data recovered from retired equipment</td><td>12 High</td><td><b>Poor</b></td><td>12 High</td><td>A.7.14</td><td>Not fully implemented</td></tr>
+    <tr><td>R5</td><td>Supplier security failure</td><td>15 High</td><td>Moderate</td><td>12 High</td><td>A.5.19–22</td><td>Not fully implemented</td></tr>
+    <tr><td>R6</td><td>Unpatched vulnerabilities</td><td>20 Extreme</td><td>Effective</td><td>8 Moderate</td><td>A.8.8–9, A.8.16</td><td>Implemented</td></tr>
+  </table></div>
+  <div class="box why"><b class="lbl">Why this table is gold</b>This table told me where to focus the whole audit. R2 had the highest inherent risk. R4's control was rated "Poor" with no reduction from inherent to residual. Treatment actions for R1, R3, R4 and R5 were all due on <b>31 March 2025</b>. And the internal audit had already found problems with access reviews and backup-log reviews. Those are exactly the places a nonconformity is likely to be hiding.</div>
+
+  <h3>History that shapes the audit</h3>
+  <ul>
+    <li><b>Internal audit (20 Nov 2024)</b> found two minor nonconformities – late annual access reviews and incomplete monthly backup-log reviews. Both were closed in Dec 2024. <i>Auditor's thought: check that the fixes actually work.</i></li>
+    <li><b>Management review (10 Jan 2025)</b> left two open actions due 31 Mar 2025: a supplier review schedule and an approved secure-disposal procedure. <i>Auditor's thought: were they done?</i></li>
+  </ul>
+  <div class="done-row"><label><input type="checkbox" class="done" data-id="case"> Mark chapter as done</label></div>
+</section>
+
+<!-- ============================================================ 4 -->
+<section class="ch" id="docs" data-title="The document library">
+  <div class="kicker">Chapter 4 · Sources</div>
+  <h2 class="ct">Every document in the Docs folder, and how I used it</h2>
+  <p>A key skill is knowing <b>which document answers which question</b>. P1–P5 show the parts each document was used in.</p>
+  <div class="tw"><table>
+    <tr><th>Document</th><th>What it is</th><th>Used in</th><th>What I took from it</th></tr>
+    <tr><td>Assessment.txt + Part files</td><td>The brief</td><td>All</td><td>Objectives, focus controls (A.8.3, A.8.13, A.7.14), team, one-day duration, required outputs.</td></tr>
+    <tr><td>Deficient Audit Plan</td><td>A flawed draft plan</td><td>P1, P2</td><td>The object to evaluate – every error became a worksheet row.</td></tr>
+    <tr><td>ISMS Scope Statement</td><td>Clause 4.3 scope</td><td>P1–P4</td><td>Correct scope wording, exclusions, systems (CloudX, PowerDash, CollabCentral, O365, Azure/AWS backups), HQ address.</td></tr>
+    <tr><td>Risk Assessment &amp; Treatment Plan</td><td>Method + risk register (6.1.2, 6.1.3)</td><td>P1–P4</td><td>Risk ratings and priorities; overdue treatment dates; methodology check.</td></tr>
+    <tr><td>Statement of Applicability</td><td>Control selection (6.1.3 d)</td><td>P1–P4</td><td>Correct control names; which controls are "not fully implemented"; SoA vs risk check.</td></tr>
+    <tr><td>Legal &amp; Regulatory Register</td><td>Legal, regulatory and contractual obligations</td><td>P1–P3</td><td><span class="t" data-k="privacy-act">Privacy Act 1988</span>, <span class="t" data-k="app">APPs</span>, <span class="t" data-k="ndb">NDB scheme</span>, contracts; <span class="t" data-k="e8">Essential Eight</span> is voluntary, so not a criterion.</td></tr>
+    <tr><td>Access Control Policy</td><td>Rules for access</td><td>P1, P3</td><td>The criteria behind finding C1: least privilege, just-in-time access, MFA, expiry dates.</td></tr>
+    <tr><td>Backup &amp; Data Retention Procedure</td><td>Rules for backup</td><td>P1, P3</td><td>The criteria behind finding C2: daily and weekly backups, encryption, offsite copy, quarterly restore tests; destruction certificates in 4.3.</td></tr>
+    <tr><td>Incident Management Procedure</td><td>Rules for incidents</td><td>P1</td><td>Listed as a criterion; R3 context (Ops Manager is Incident Coordinator).</td></tr>
+    <tr><td>ISMS Roles &amp; Responsibilities</td><td>Who does what</td><td>P1, P2</td><td>Pairing auditors with auditees; spotting the Ops Manager bottleneck.</td></tr>
+    <tr><td>ISMS Policy Manual</td><td>Top-level policy (5.2)</td><td>P1</td><td>Listed as a criterion; annual review requirement.</td></tr>
+    <tr><td>Information Security Objectives</td><td>Measurable targets (6.2)</td><td>P3</td><td>100% restore-test target (C2); 100% training completion target (OFI2).</td></tr>
+    <tr><td>Internal Audit &amp; Mgmt Review Summary</td><td>Clauses 9.2, 9.3, 10</td><td>P1–P3</td><td>Previous nonconformities, open actions, dates.</td></tr>
+    <tr><td>Audit Evidence Pack</td><td>What the auditors found on the day</td><td>P2–P4 (P1 names only)</td><td>Interview answers, samples, results, the draft findings. <b>Not used for findings in Part One</b> – you don't record findings while planning.</td></tr>
+    <tr><td>Certification Body Criteria</td><td>How to grade findings</td><td>P1–P4</td><td>Definitions of major, minor, OFI and insufficient evidence.</td></tr>
+  </table></div>
+  <div class="box trap"><b class="lbl">Trap: missing documents</b>Part Two mentions "Draft Audit Findings" and "Audit Progress and Change Scenarios", and Part Four mentions "SafeStore's corrective-action responses". None of these files exist in the folder. I took the draft findings from section 6 of the Evidence Pack, and wrote a realistic simulated corrective-action response, clearly labelled. When information is missing, say what you assumed – never pretend.</div>
+  <div class="done-row"><label><input type="checkbox" class="done" data-id="docs"> Mark chapter as done</label></div>
+</section>
+
+<!-- ============================================================ 5 -->
+<section class="ch" id="workbooks" data-title="Working the spreadsheets">
+  <div class="kicker">Chapter 5 · Practical skill</div>
+  <h2 class="ct">How to read and fill the workbooks</h2>
+  <ol class="steps">
+    <li><b>Find the input cells.</b> Only <b>pale-yellow</b> cells are yours. Grey cells are labels – never change them.</li>
+    <li><b>Unhide <code>_Lists</code>.</b> Right-click any tab → <i>Unhide</i> → <code>_Lists</code>. This hidden tab holds the drop-down options. For example, it contains "0 major, 1 minor (A.7.14), 2 OFIs" and "Recommend certification subject to corrective action". These options reveal what the course designer expects, so use them to check your own reasoning (not to replace it).</li>
+    <li><b>Read the labels carefully.</b> Some rows are explicitly linked to ISO 19011 clauses (e.g. "clause 6.3.2.2"). That tells you which part of the standard to apply.</li>
+    <li><b>Drop-down cells:</b> pick the closest option. If the explanation matters, I picked the list value and added a short note after it (e.g. <i>"Incomplete – the plan has no…"</i>). Excel only checks drop-downs when you type, so this works – but if your marker wants only the list value, keep the cell to the value alone.</li>
+    <li><b>Keep the files safe.</b> I saved completed copies (<code>…_COMPLETED.xlsx</code>) and never overwrote the templates.</li>
+    <li><b>Check readability.</b> Make rows tall enough for wrapped text, and widen any column that clips your answer.</li>
+  </ol>
+  <div class="box learn"><b class="lbl">Learn: data validation</b>A drop-down in Excel is called <span class="t" data-k="data-validation">data validation</span>. If you edit these workbooks with some programming libraries (for example Python's openpyxl), the drop-downs can be silently deleted. I edited the file's internal XML directly to keep them. If you fill the workbooks by hand in Excel, you don't need to worry about this.</div>
+  <div class="done-row"><label><input type="checkbox" class="done" data-id="workbooks"> Mark chapter as done</label></div>
+</section>
+
+<!-- ============================================================ PART 1 -->
+<section class="ch" id="p1" data-title="Part One – Plan the audit">
+  <div class="kicker">Part One · Workbook Stage 1</div>
+  <h2 class="ct">Plan the audit</h2>
+  <p><b>The task:</b> evaluate a deficient draft <span class="t" data-k="audit-plan">audit plan</span> (tab 1A), then write a corrected Final Audit Plan (tab 1B). <b>Rule:</b> don't record findings while planning.</p>
+
+  <h3>Step 1 – Build your mental model before judging the plan</h3>
+  <p>I read the scope, risk register, SoA, legal register, policies and the internal audit/management review summary first. Only then did I open the draft plan. You can't spot what's wrong until you know what right looks like.</p>
+
+  <h3>Step 2 – Feasibility (tab 1A, section 1)</h3>
+  <div class="box learn"><b class="lbl">Learn: audit feasibility</b><span class="t" data-k="feasibility">Feasibility</span> asks: can this audit achieve its objectives with the time, people, information and access available? ISO 19011 considers this before the audit starts (the workbook cites clause 6.2.3). If something isn't feasible, you propose a <b>practical alternative</b> rather than giving up.</div>
+  <p><b>My answer: "Yes" – but only if the plan is corrected.</b> The draft plan as written was not feasible:</p>
+  <ul>
+    <li>It included the third-party data centres in scope, but SafeStore excluded them and the team has no right to enter.</li>
+    <li>The Technical Auditor had to cover access, backup, encryption, network security, vulnerability management and software development in one day.</li>
+    <li>Access and backup (the two highest-rated risks) shared one hour, and A.7.14 had no time at all.</li>
+    <li>The Operations Manager holds evidence for nearly everything, so double-booking would stall several areas.</li>
+  </ul>
+  <details><summary>How I got the practical alternatives</summary><div class="in">
+    <p>For each "can't do", I asked: what other evidence would answer the same question?</p>
+    <ul>
+      <li><b>Can't visit data centres?</b> Audit how SafeStore <i>manages</i> them instead: contracts, data-location clauses and supplier assurance reports (ISO 27001 certificate, SOC 2) under A.5.19–A.5.23.</li>
+      <li><b>No live system access?</b> SafeStore drives a read-only screen share while you direct the queries, or exports reports while you watch, with dates and system details visible.</li>
+      <li><b>Person unavailable?</b> Use a named deputy, or a remote interview later the same day.</li>
+      <li><b>Time running short?</b> Re-prioritise by risk and report what wasn't covered as a limitation.</li>
+    </ul>
+  </div></details>
+
+  <h3>Step 3 – Evaluate each element of the draft plan (tab 1A, section 2)</h3>
+  <p>The worksheet asks, row by row: <b>the error → its effect → the correction</b>. These were the most important errors:</p>
+  <div class="tw"><table>
+    <tr><th>Area</th><th>What was wrong</th><th>How I spotted it</th></tr>
+    <tr><td>Objectives</td><td>"Review documentation" is a method; "identify weaknesses" assumes a bad result; "confirm compliance" assumes a good result; "determine whether SafeStore should receive certification" – only the CB decides.</td><td>Compared with the objectives in Assessment.txt and the rule that the audit team recommends but doesn't decide.</td></tr>
+    <tr><td>Scope</td><td>Included "physical operation of third-party data centres" – excluded by SafeStore. Widened "outsourced services" into a blanket exclusion.</td><td>Compared word for word with the Scope Statement.</td></tr>
+    <tr><td>Criteria</td><td>"A.8.3 Information backup" (backup is A.8.13); "A.8.28 Secure disposal" (A.8.28 is secure coding, disposal is A.7.14); "A.6.4 Supplier security" (A.6.4 is the disciplinary process, suppliers are A.5.19–22).</td><td>Checked every control number against the SoA.</td></tr>
+    <tr><td>Schedule</td><td>A whole-team document review for an hour (that's Stage 1 work); two auditors in the same interview; no time for A.7.14, clause 5 with the MD, or clauses 9.2, 9.3 and 10.</td><td>Mapped every clause and control to a time slot – the gaps became obvious.</td></tr>
+    <tr><td>Team</td><td>Lead Auditor had no audit areas; Technical Auditor overloaded; Compliance Auditor just "assists".</td><td>Compared workload against the team's skills and the risks.</td></tr>
+    <tr><td>Methods &amp; sampling</td><td>Methods not linked to areas; undated screenshots accepted; no sampling plan at all.</td><td>Checked for every part an audit plan must contain (the workbook cites ISO 19011 clause 6.3.2.2).</td></tr>
+    <tr><td>Risks</td><td>"Use previous screenshots" (unreliable evidence); "reduce time on remaining activities" (cuts high-risk areas); "the auditor's decision is final" (not impartial).</td><td>Tested each response against the audit principles.</td></tr>
+    <tr><td>Missing items</td><td>Date, names, contacts, confidentiality, communication, reporting.</td><td>Checklist of required plan contents.</td></tr>
+  </table></div>
+  <div class="box why"><b class="lbl">Why the effect column matters</b>Markers want to see that you understand <i>consequences</i>. For example: wrong control numbers mean the team would test the wrong controls, so two of the three required focus controls would never be audited.</div>
+
+  <h3>Step 4 – Planning risks (tab 1A, section 3)</h3>
+  <p>For each risk type (on-site, ICT, confidentiality, sampling, personnel, other) I gave <b>the effect</b> and <b>a planned control</b>. For example, ICT risk: remote access to the Azure/AWS backup consoles fails → agree a tool approved by the certification body, test it 2–3 days before, and as a fallback have reports generated on site while the auditor watches.</p>
+
+  <h3>Step 5 – Write the Final Audit Plan (tab 1B)</h3>
+  <h4>Objectives (copy this pattern)</h4>
+  <ol><li>Determine conformity with clauses 4–10.</li><li>Evaluate implementation and <b>effectiveness</b> of A.8.3, A.8.13, A.7.14.</li><li>Evaluate the ability to meet legal, regulatory and contractual requirements and objectives.</li><li>Reach an evidence-based conclusion and a <b>recommendation</b> to the CB.</li></ol>
+  <h4>Scope, exclusions and criteria</h4>
+  <p>Scope and exclusions are copied from SafeStore's approved statement. I added locations, systems, processes and the time period covered. One clarification: suppliers that support the service stay in scope through supplier controls, even though the data centres themselves are excluded. The criteria list the standard, the SoA, SafeStore's documents, legal requirements (as the ISMS must address them – this is not a legal compliance audit) and the CB's grading criteria.</p>
+  <h4>The schedule – three parallel streams</h4>
+  <div class="tw"><table>
+    <tr><th>Time</th><th>Lead Auditor</th><th>Technical Auditor</th><th>Compliance Auditor</th></tr>
+    <tr><td>08:30–09:00</td><td colspan="3"><b>Opening meeting</b> (everyone)</td></tr>
+    <tr><td>09:00–10:30</td><td>Clauses 4, 5, 6 with MD/CTO</td><td>A.8.3 access with Ops Manager</td><td>Clause 7 with Support Lead</td></tr>
+    <tr><td>10:45–12:15</td><td>Clauses 8.1–8.3, R3/R5 treatment with CTO</td><td>A.8.3 in platform with Developer</td><td>A.7.14 disposal with Ops Manager</td></tr>
+    <tr><td>12:15–13:00</td><td colspan="3">Lunch + 15-min private team check-in</td></tr>
+    <tr><td>13:00–14:30</td><td>Clauses 9.1, 9.3, 10.1 with MD/CTO</td><td>A.8.13 backup with Ops Manager</td><td>Clauses 7.5, 9.2, 10.2 records</td></tr>
+    <tr><td>14:30–15:15</td><td colspan="3">Evidence verification and follow-up</td></tr>
+    <tr><td>15:15–16:15</td><td colspan="3">Audit-team review (private) – agree and grade findings</td></tr>
+    <tr><td>16:30–17:00</td><td colspan="3"><b>Closing meeting</b></td></tr>
+  </table></div>
+  <div class="box why"><b class="lbl">Why it's built this way</b>Look down the Technical and Compliance columns: the <b>Operations Manager is never in two places at once</b>. Time follows risk: backup and access get about 1.5 hours each. The private team review is protected so findings are agreed before the closing meeting, not invented during it.</div>
+  <h4>Sampling, risks, communication, confidentiality, reporting</h4>
+  <ul>
+    <li><b>Sampling:</b> judgement-based (the drop-down option), selected by the auditors from complete lists, with 100% checks for tiny populations such as the three retired devices. Expand the sample when a problem appears.</li>
+    <li><b>Communication:</b> the CTO is the primary contact and the Ops Manager the alternate. Check-ins at 12:15 and 14:30. A clear escalation chain: auditor → Lead Auditor → CTO → MD and CB.</li>
+    <li><b>Confidentiality:</b> confidentiality agreements, read-only screens driven by SafeStore, no customer data recorded, encrypted CB devices only.</li>
+    <li><b>Reporting:</b> the Lead Auditor writes the report, issued within 10 working days, and the CB decides.</li>
+  </ul>
+  <div class="box mistake"><b class="lbl">My mistake – and the lesson</b>No audit date was given, so I first chose December 2026 (close to today's date). Later I noticed that every SafeStore document lives in 2025: the management review in January 2025, actions due 31 March 2025, the next internal audit in Q4 2025. A 2026 date would make every annual review look overdue and create findings the case never intended. I changed it to <b>10 September 2025</b>. <i>Lesson: always check your planning assumptions against the dates in the documents.</i></div>
+  <div class="done-row"><label><input type="checkbox" class="done" data-id="p1"> Mark chapter as done</label></div>
+</section>
+
+<!-- ============================================================ PART 2 -->
+<section class="ch" id="p2" data-title="Part Two – Lead the team">
+  <div class="kicker">Part Two · Workbook Stage 2</div>
+  <h2 class="ct">Lead the audit team</h2>
+  <p><b>The task:</b> brief and allocate the team (tab 2B), prepare the <span class="t" data-k="opening-meeting">opening meeting</span> (tab 2A), manage changes and two tricky situations, and review the draft findings (tab 2C).</p>
+
+  <h3>Team briefing and allocation (tab 2B)</h3>
+  <p>The briefing turns the plan into instructions the team can act on: priorities (backup → access → disposal → treatment status), how to record evidence (<span class="t" data-k="working-papers">working papers</span>), when to report progress, how to escalate, confidentiality rules, impartiality declarations and expected behaviour.</p>
+  <div class="tw"><table>
+    <tr><th>Auditor</th><th>Areas</th><th>Contacts (drop-down)</th><th>Why them</th></tr>
+    <tr><td>Lead Auditor</td><td>Clauses 4, 5, 6, 8.1–8.3, 9.1, 9.3, 10.1; coordination; report</td><td>CTO / Operations Manager</td><td>Management-system expertise and authority with top management</td></tr>
+    <tr><td>Technical Auditor</td><td>A.8.3 and A.8.13 (+ related controls)</td><td>Operations Manager / Developer</td><td>Cloud, identity and access management, and backup knowledge</td></tr>
+    <tr><td>Compliance Auditor</td><td>Clause 7, A.7.14, legal register, 9.2, 10.2</td><td>Operations Manager / Support Lead</td><td>Privacy, records and governance knowledge</td></tr>
+  </table></div>
+  <div class="box learn"><b class="lbl">Learn: competence + impartiality</b>When you give someone work, check two things. Can they do it (<span class="t" data-k="competence">competence</span>)? And can they judge it fairly (<span class="t" data-k="impartiality">impartiality</span>)? Impartiality is confirmed by signed declarations: no recent employment, consulting, family or financial links with the auditee.</div>
+
+  <h3>The opening meeting (tab 2A)</h3>
+  <p>The workbook asks for the <b>three purposes</b> (the workbook cites ISO 19011 clause 6.4.3):</p>
+  <ol><li>Confirm that all participants agree to the audit plan.</li><li>Introduce the audit team and their roles.</li><li>Make sure all planned activities can be performed.</li></ol>
+  <p>Each checklist item was marked with a drop-down value (Confirmed, Explained, Agreed, Confirmed available), plus notes. I included realistic questions from SafeStore. For example, the CTO asked whether the data centres would be inspected. The answer was no – they are excluded – but supplier management would be checked instead.</p>
+
+  <h3>Monitoring the audit and managing change</h3>
+  <p>At each checkpoint the Lead Auditor compares progress with the plan, checks whether evidence is relevant, reliable and sufficient, spots delays, and adjusts timing, samples, methods or assignments. Every change is agreed with the auditee contact, recorded in the audit log, and mentioned in the report if it affects coverage.</p>
+
+  <h3>Situation 1 – Threat to impartiality</h3>
+  <p>An auditor recently worked at SafeStore, in the very area they were given.</p>
+  <details><summary>How I answered (and why)</summary><div class="in">
+    <ul>
+      <li><b>Threat:</b> a <span class="t" data-k="self-review">self-review</span> and <span class="t" data-k="familiarity">familiarity</span> threat – they would be judging their own past work and former colleagues.</li>
+      <li><b>Immediate action</b> (drop-down: "Move the auditor to a different area"): stop their work in that area at once and contact the CB.</li>
+      <li><b>Safeguard:</b> reassign the area. If the CB allows them to stay, give them unrelated work and review all of it. If the CB's cooling-off rule applies (commonly two years), withdraw them from the audit.</li>
+      <li><b>Completed work</b> (drop-down: "Re-check anything that auditor already looked at"): nothing they gathered is used until it has been independently re-verified.</li>
+      <li><b>Informed:</b> audit client and Lead Auditor, plus the CB. Recorded in the audit log, the CB impartiality register and the report.</li>
+    </ul>
+  </div></details>
+
+  <h3>Situation 2 – Evidence unavailable</h3>
+  <p>I chose a realistic case from the evidence pack: the training dashboard screenshot had <b>no date and no underlying records</b>, and the individual records couldn't be produced in time.</p>
+  <details><summary>How I answered</summary><div class="in">
+    <ul>
+      <li><b>Effect:</b> awareness under clause 7.2/7.3 can't be confirmed either way. The rest of the audit continues.</li>
+      <li><b>Alternatives:</b> interview staff, check signed induction forms, ask the Support Lead to show their own record live.</li>
+      <li><b>Change:</b> move the check to the follow-up block, agree it with the CTO, and log it.</li>
+      <li><b>Limitation</b> (drop-down: "Write a clear limit rather than assume it is fine"): state it in the report. Never treat missing evidence as conformity.</li>
+    </ul>
+  </div></details>
+
+  <h3>Reviewing draft findings (tab 2C)</h3>
+  <p>For each draft finding: confirm the criterion → judge the evidence → decide whether more checking is needed → check the wording and grade → retain, revise, reclassify or withdraw → record why.</p>
+  <div class="tw"><table>
+    <tr><th>Draft finding</th><th>Decision</th><th>Reasoning</th></tr>
+    <tr><td>F1 – A.7.14 minor NC</td><td><b>Revise</b></td><td>The grade stays minor, but the wording "no disposal records" overstates the problem: no device has been disposed of yet. The real gap is that there is no approved method to verify devices are wiped before disposal or re-use, and the R4 treatment is overdue.</td></tr>
+    <tr><td>F2 – Supplier OFI</td><td><b>Retain</b></td><td>Reviews do happen at contract renewal, and ISO 27001 doesn't demand a documented schedule – so no requirement is broken. It would be reclassified to a minor NC if a critical supplier turned out never to have been reviewed.</td></tr>
+  </table></div>
+  <div class="box learn"><b class="lbl">Learn: diverging opinions</b>A <span class="t" data-k="diverging">diverging opinion</span> is a disagreement that can't be resolved. Inside the team, go back to the criterion and the evidence; the Lead Auditor decides and records the reasons. With the auditee, listen, accept new evidence, and revise if it is justified. If it is still unresolved, record both positions in the report and explain the CB's appeals process. Never say "the auditor's decision is final."</div>
+  <div class="done-row"><label><input type="checkbox" class="done" data-id="p2"> Mark chapter as done</label></div>
+</section>
+
+<!-- ============================================================ PART 3 -->
+<section class="ch" id="p3" data-title="Part Three – Conduct the audit">
+  <div class="kicker">Part Three · Workbook Stage 3</div>
+  <h2 class="ct">Conduct the audit</h2>
+  <p><b>The task:</b> build the checklist and sampling record (3A), write findings (3B), run the debrief (3C), and review the ISMS documents and SoA (extra tab). You need <b>at least one conformity and one nonconformity</b>.</p>
+
+  <h3>Interviewing like an auditor</h3>
+  <ul>
+    <li><b>Open questions:</b> "Describe how…", "Show me…", "How do you know…?" – not "Do you review access?" (a yes/no question teaches you nothing).</li>
+    <li><b>Follow up:</b> "Can I see the last one?", "What happens when it fails?"</li>
+    <li><b>Verify:</b> every important statement is checked against a record or the live system.</li>
+    <li><b>Chase inconsistencies.</b> The 2024 internal audit mentioned <i>annual</i> access reviews, but the CTO said <i>quarterly</i>. I asked for the documented review schedule (created as a 2024 corrective action), which confirmed quarterly. That resolved it.</li>
+  </ul>
+
+  <h3>The checklist (tab 3A) – one row per focus control</h3>
+  <div class="tw"><table>
+    <tr><th>Control</th><th>Key question</th><th>Expected evidence</th><th>Sampling (drop-down)</th></tr>
+    <tr><td>A.8.3</td><td>How is access to data and functions limited to need? How is privileged access approved, authenticated and reviewed?</td><td>IAM account list, approvals, MFA settings, expiry settings, review records</td><td>Judgement sample of recent records</td></tr>
+    <tr><td>A.8.13</td><td>What is the backup schedule? How is it protected and monitored? How do you know a restore works?</td><td>Job logs, month-end and offsite copies, encryption, restore-test records, monthly log reviews</td><td>Judgement sample of recent and month-end records</td></tr>
+    <tr><td>A.7.14</td><td>What happens to retired equipment? How is data removal verified?</td><td>Approved procedure, equipment register, erasure or destruction certificates</td><td>Judgement sample of the whole small set</td></tr>
+  </table></div>
+
+  <h3>Sampling records</h3>
+  <p>For each sample I recorded the <b>population → items selected → method and rationale → verified? → exceptions or limitations → expand?</b></p>
+  <ul>
+    <li><b>Access:</b> DEV-014, ADM-003, TEMP-007 – one of each high-risk type. All conform. Limitation: no leaver or service account in the item sample.</li>
+    <li><b>Backup:</b> recent daily logs, the month-end backup with offsite copy, and the latest restore test. All successful.</li>
+    <li><b>Disposal:</b> all 3 devices (100%). Exception: no approved procedure or erasure evidence.</li>
+  </ul>
+
+  <h3>Writing findings (tab 3B, "A.18 format")</h3>
+  <p>The workbook calls this the "A.18 format". A <b>conformity</b> records the criterion, the evidence and a declaration. A <b>nonconformity</b> records the criterion, the evidence, <i>why the criterion is not met</i>, related findings and the grade.</p>
+  <h4><span class="pill p-ok">C1</span> A.8.3 Information access restriction – Conformity</h4>
+  <p>Evidence: the policy requires least privilege, just-in-time access, MFA and expiry dates. The CTO and Developer confirmed this. The sample of three accounts matched their roles, MFA was on, expiry was set on the temporary account, and all three were in the latest review.</p>
+  <h4><span class="pill p-ok">C2</span> A.8.13 Information backup – Conformity</h4>
+  <p>Evidence: the procedure requires daily backups, encryption, an offsite copy and quarterly restore tests. The logs were successful and encrypted, the month-end backup had an offsite copy, and the restore test was successful – meeting the 100% restore objective.</p>
+  <h4><span class="pill p-min">N1</span> A.7.14 Secure disposal or re-use – Minor nonconformity</h4>
+  <p><b>Evidence:</b> the Ops Manager's interview, an equipment register showing 3 devices awaiting disposal, the procedure still in draft, no erasure method or records, the SoA status "not fully implemented", R4 effectiveness "Poor", and the treatment due 31 Mar 2025 not done.</p>
+  <p><b>Why the requirement isn't met:</b> A.7.14 expects equipment with storage media to be checked so that sensitive data is removed or securely overwritten before disposal or re-use. SafeStore has no approved method, responsibilities or evidence requirements for that check.</p>
+
+  <div class="box learn"><b class="lbl">Learn: how to grade major vs minor (my decision steps)</b>
+  <ol style="margin:6px 0 0 18px;padding:0">
+    <li>Is a requirement actually broken? No → OFI or conformity. Yes → continue.</li>
+    <li>Is it <b>systemic</b> – many related failures, or a required process missing or completely broken? Yes → major.</li>
+    <li>Does it create <b>substantial doubt</b> that the ISMS achieves its outcomes? Yes → major.</li>
+    <li>Otherwise → minor.</li>
+  </ol>
+  For N1: it is a single control, the devices are locked away, none has been disposed of, and no data was exposed. Access, backup and the rest of the ISMS work. So it is <b>minor</b>.</div>
+  <div class="box trap"><b class="lbl">Trap: "missing procedure = major"?</b>It's tempting to say "the procedure is missing, so a required process is absent → major". But ISO 27001 doesn't require a written disposal procedure as such. It requires the <b>control outcome</b>. SafeStore has compensating measures (restricted access, records retained), so it isn't a complete breakdown. Always grade on the extent and significance shown by the evidence.</div>
+
+  <h4>Opportunities for improvement</h4>
+  <ul>
+    <li><span class="pill p-ofi">OFI1</span> A.5.19–A.5.22: suppliers are reviewed only at renewal, with no documented periodic schedule.</li>
+    <li><span class="pill p-ofi">OFI2</span> A.6.3: training reporting doesn't show its date or link to individual records.</li>
+  </ul>
+  <p>Notice the wording: an OFI says <b>what</b> could be better, not <b>how</b> to fix it. That keeps the auditor impartial (see <span class="t" data-k="consultancy">consultancy</span>).</p>
+
+  <h3>The debrief (tab 3C)</h3>
+  <p>Before the closing meeting the team checks: activities completed? evidence sufficient? sampling sufficient? any conflicting evidence? any trails needing more work? Proposed result: <b>0 major, 1 minor (A.7.14), 2 OFIs</b> (a drop-down option). I also recorded <span class="t" data-k="positive-practice">positive practices</span>, such as automatic expiry of elevated access and closed internal-audit nonconformities.</p>
+
+  <h3>ISMS documentation &amp; SoA review (extra tab)</h3>
+  <ul>
+    <li><b>SoA vs risk register:</b> for each of R1–R6, the SoA status matches the risk register (e.g. R4 "Poor" ↔ A.7.14 "not fully implemented") → all <b>Consistent</b>.</li>
+    <li><b>Scope:</b> the SoA justifications fit the Scope Statement. Customer endpoints are excluded, but A.8.1 covers SafeStore's own endpoints, so that's fine.</li>
+    <li><b>Methodology (clause 6.1.2):</b> it has acceptance criteria, consistent repeatable results, identifies risks to CIA, names risk owners, analyses likelihood and consequence, and evaluates and prioritises risks → <b>Yes</b>.</li>
+    <li><b>Inconsistencies found:</b> unclear access-review frequency; treatment due dates passed without status updates; the backup procedure requires destruction certificates while no disposal procedure exists; generic SoA justifications.</li>
+  </ul>
+  <div class="done-row"><label><input type="checkbox" class="done" data-id="p3"> Mark chapter as done</label></div>
+</section>
+
+<!-- ============================================================ PART 4 -->
+<section class="ch" id="p4" data-title="Part Four – Report & close">
+  <div class="kicker">Part Four · Workbook Stage 4</div>
+  <h2 class="ct">Report and close the audit</h2>
+
+  <h3>The closing meeting (tab 4A)</h3>
+  <p>The <span class="t" data-k="closing-meeting">closing meeting</span> presents the findings and conclusions so SafeStore understands them, and explains what happens next. What I recorded:</p>
+  <ul>
+    <li><b>Attendees:</b> the audit team, MD, CTO, Ops Manager, Support Lead and Developer.</li>
+    <li><b>Findings:</b> "1 minor NC (A.7.14) and 2 OFIs presented with evidence".</li>
+    <li><b>Conclusion:</b> "ISMS is effective overall with one minor gap".</li>
+    <li><b>Recommendation:</b> "Recommend certification subject to corrective action".</li>
+    <li><b>Deadlines:</b> a corrective action plan within 30 days. The CB must accept it before deciding.</li>
+    <li><b>Sampling limitations</b> stated, questions answered, no revised findings, no unresolved disagreements.</li>
+  </ul>
+  <div class="box learn"><b class="lbl">Learn: recommendation vs consulting</b>Auditors may say <b>what</b> the gap or improvement area is ("no documented schedule for supplier reviews"). They must not say <b>how</b> to fix it ("use this tool, write this procedure"). Advising on fixes is <span class="t" data-k="consultancy">consultancy</span>: the auditor would later be auditing their own advice, which threatens impartiality.</div>
+
+  <h3>The final audit report (tab 4B)</h3>
+  <div class="grid2">
+    <div class="card"><h4>INCLUDE</h4>Purpose; objectives, scope, criteria; date, location, client, team, participants; methods, sampling, limitations; findings with evidence and grades; conclusion; recommendation; unresolved disagreements; follow-up requirements; distribution and confidentiality.</div>
+    <div class="card"><h4>EXCLUDE</h4>Unsupported opinions; consulting advice; unnecessary confidential data (customer data, credentials, detailed security settings); any claim that the audit team grants the certificate.</div>
+  </div>
+  <p>The findings table counts <b>0 major / 1 minor / 2 OFIs</b>. The report is issued within 10 working days through the CB's secure portal to the MD, CTO and CB only.</p>
+
+  <h3>Corrective action and follow-up (tab 4C)</h3>
+  <div class="tw"><table>
+    <tr><th>Term</th><th>Meaning</th><th>N1 example</th></tr>
+    <tr><td><span class="t" data-k="correction">Correction</span></td><td>Fix the immediate problem.</td><td>Wipe the 3 devices, get certificates, update the register.</td></tr>
+    <tr><td><span class="t" data-k="root-cause">Root cause</span></td><td>Why it happened.</td><td>Nobody tracked or escalated overdue treatment actions.</td></tr>
+    <tr><td><span class="t" data-k="extent">Extent</span></td><td>Where else the same cause applies.</td><td>R1, R3 and R5 actions were also overdue; backup-media destruction too.</td></tr>
+    <tr><td><span class="t" data-k="corrective-action">Corrective action</span></td><td>Remove the cause so it doesn't happen again.</td><td>Approve the procedure, add a monthly review of overdue actions, update the register and SoA.</td></tr>
+    <tr><td><span class="t" data-k="effectiveness">Effectiveness</span></td><td>Proof it worked over time.</td><td>Checked at the first <span class="t" data-k="surveillance">surveillance audit</span>.</td></tr>
+  </table></div>
+  <p>SafeStore's response wasn't supplied, so I wrote a realistic one, labelled "SafeStore response", and then an "evaluation" of it. The auditor <b>evaluates, never prescribes</b>. The outcome: implementation verified <b>Yes</b>, effectiveness <b>No (not yet)</b>, status <b>"Effectiveness review required"</b>.</p>
+  <div class="box trap"><b class="lbl">Trap: closing too early</b>Seeing an approved procedure proves the fix was <i>implemented</i>, not that it's <i>effective</i>. Effectiveness needs time and new records (disposals done under the new procedure). That's why the status isn't "Closed".</div>
+  <div class="done-row"><label><input type="checkbox" class="done" data-id="p4"> Mark chapter as done</label></div>
+</section>
+
+<!-- ============================================================ PART 5 -->
+<section class="ch" id="p5" data-title="Part Five – Professional behaviour">
+  <div class="kicker">Part Five · Workbook Stage 5</div>
+  <h2 class="ct">Professional behaviour and reflection</h2>
+
+  <h3>Five ethics scenarios (tab 5A)</h3>
+  <p>For each one: the <b>risk</b>, the <b>right action</b>, the <b>record</b>, and <b>who is informed</b>.</p>
+  <div class="tw"><table>
+    <tr><th>Scenario</th><th>Risk</th><th>Right action</th><th>Record</th><th>Informed</th></tr>
+    <tr><td>Manager asks you to drop a finding</td><td>Integrity, impartiality</td><td>Listen, ask for new evidence, re-check. Change it only if the evidence justifies it.</td><td>Record the pressure</td><td>Audit client / CB</td></tr>
+    <tr><td>Evidence sent to personal email</td><td>Confidentiality breach (possibly the NDB scheme)</td><td>Stop, delete, confirm in writing, assess, report. Withdraw the auditor's access.</td><td>Report and record</td><td>Audit client / CB</td></tr>
+    <tr><td>Auditor built the process they audit</td><td>Self-review</td><td>Disclose, reassign, re-check their work. The CB decides if they stay.</td><td>Disclose and record</td><td>Audit client / CB</td></tr>
+    <tr><td>Argumentative auditor</td><td>Damaged cooperation, poor evidence</td><td>Step in, take a break, coach privately, monitor.</td><td>Note and coach</td><td>Team member</td></tr>
+    <tr><td>Expensive gift</td><td>Inducement</td><td>Decline politely for the whole team.</td><td>Record the decision</td><td>Certification body</td></tr>
+  </table></div>
+
+  <h3>Self-evaluation (tab 5B)</h3>
+  <p>Honest ratings with evidence: "Highly competent" for evidence-based judgement and for impartiality and confidentiality, "Developing" for managing disagreements (no real dispute occurred to test it), and "Competent" for the rest. Real weaknesses are named, such as a sample smaller than planned and the audit-date error. <b>Self-evaluation is worth more when it's honest.</b></p>
+  <p>Development plan – three <b>SMART</b> actions (Specific, Measurable, Achievable, Relevant, Time-bound): a conflict-resolution workshop by 26 Feb 2027; a planned-vs-actual sampling log by 31 Mar 2027; a cloud security course by 31 May 2027. Each has stated proof of completion (a certificate, peer-reviewed logs), logged as <span class="t" data-k="cpd">CPD</span>.</p>
+
+  <h3>Reflection (tab 5C)</h3>
+  <p>Link each principle to a concrete SafeStore moment – for example, "I graded N1 minor because it was isolated and the devices were secured – neither inflated nor softened." Then state the confirmation the brief asks for: <b>all findings are based on approved criteria and verified evidence.</b></p>
+  <div class="done-row"><label><input type="checkbox" class="done" data-id="p5"> Mark chapter as done</label></div>
+</section>
+
+<!-- ============================================================ CHEATSHEET -->
+<section class="ch" id="cheat" data-title="One-page summary">
+  <div class="kicker">Recap</div>
+  <h2 class="ct">One-page summary of every answer</h2>
+  <div class="tw"><table>
+    <tr><th>Part</th><th>Key outputs</th></tr>
+    <tr><td>1 – Plan</td><td>Feasible only if corrected. Wrong control numbers (A.8.3, A.8.28, A.6.4) fixed. Data centres removed from scope. 3 parallel streams with no double-booking. Judgement sampling. Audit date 10 Sep 2025.</td></tr>
+    <tr><td>2 – Lead</td><td>Allocation LA / TA / CA. Opening meeting confirmed. Situation 1 → reassign and re-check. Situation 2 → alternative evidence plus a stated limitation. F1 Revise, F2 Retain.</td></tr>
+    <tr><td>3 – Conduct</td><td>C1 A.8.3 conformity; C2 A.8.13 conformity; N1 A.7.14 minor; OFI1 suppliers; OFI2 training records. SoA consistent with risks; methodology meets 6.1.2.</td></tr>
+    <tr><td>4 – Close</td><td>"Recommend certification subject to corrective action". Corrective action plan within 30 days. Implementation verified; effectiveness at surveillance.</td></tr>
+    <tr><td>5 – Behaviour</td><td>Five scenarios, honest self-rating, three SMART development actions, reflection.</td></tr>
+  </table></div>
+  <div class="done-row"><label><input type="checkbox" class="done" data-id="cheat"> Mark chapter as done</label></div>
+</section>
+
+<!-- ============================================================ QUIZ -->
+<section class="ch" id="quiz" data-title="Test yourself">
+  <div class="kicker">Practice</div>
+  <h2 class="ct">Test yourself</h2>
+  <p>Pick an answer to see feedback.</p>
+  <div class="quiz" id="quizBox"></div>
+  <div class="done-row"><label><input type="checkbox" class="done" data-id="quiz"> Mark chapter as done</label></div>
+</section>
+
+<!-- ============================================================ GLOSSARY -->
+<section class="ch" id="glossary" data-title="Glossary">
+  <div class="kicker">Reference</div>
+  <h2 class="ct">Glossary</h2>
+  <input id="gsearch" type="search" placeholder="Search terms… e.g. sampling, residual, NC" aria-label="Search glossary">
+  <dl class="gl" id="glist"></dl>
+  <div class="done-row"><label><input type="checkbox" class="done" data-id="glossary"> Mark chapter as done</label></div>
+</section>
+
+</main>
+</div>
+<div id="pop" role="tooltip"></div>
+
+<script>
+const G = {
+ "iso27001":["ISO/IEC 27001:2022","The international standard that sets the requirements for an Information Security Management System. Organisations can be certified against it."],
+ "iso19011":["ISO 19011","The guideline for auditing management systems: audit principles, managing audit programmes, and how to plan, conduct, report and follow up an audit. This case uses the 2026 edition."],
+ "isms":["ISMS (Information Security Management System)","The organised set of policies, processes, people, roles and technology an organisation uses to manage information-security risk and keep improving."],
+ "cia":["CIA triad","Confidentiality (only authorised people see information), Integrity (information is accurate and complete), Availability (information is there when needed)."],
+ "annex-a":["Annex A","The list of 93 information-security controls in ISO/IEC 27001:2022, grouped into Organisational (A.5), People (A.6), Physical (A.7) and Technological (A.8) themes."],
+ "control":["Control","A measure that changes a risk – for example MFA, backups or a disposal procedure. Controls can be preventive, detective or corrective."],
+ "soa":["Statement of Applicability (SoA)","A required document (clause 6.1.3 d) listing every Annex A control, whether it applies, why, and whether it is implemented."],
+ "risk-treatment":["Risk treatment","Deciding what to do about a risk: treat (add or improve controls), accept, share (e.g. insurance or contracts) or avoid (stop the activity)."],
+ "inherent-risk":["Inherent risk","The level of a risk before considering existing controls."],
+ "residual-risk":["Residual risk","The level of risk left after considering existing controls and how well they work."],
+ "target-risk":["Target risk","The risk level an organisation aims for once its planned treatment is complete."],
+ "risk-owner":["Risk owner","The person accountable for managing a particular risk – approving its treatment and accepting what remains."],
+ "likelihood":["Likelihood","How probable it is that a risk event will happen. SafeStore scores it 1 (rare) to 5 (almost certain)."],
+ "consequence":["Consequence","How bad the impact would be if the event happened. SafeStore scores it 1 (insignificant) to 5 (severe)."],
+ "interested-parties":["Interested parties","People or organisations who can affect or be affected by the ISMS: customers, regulators, suppliers, staff, owners."],
+ "scope":["Audit scope / ISMS scope","The boundaries: which locations, processes, systems, people and time period are covered."],
+ "criteria":["Audit criteria","The requirements evidence is compared against: the standard, the organisation's own policies and procedures, legal and contractual requirements."],
+ "objectives-is":["Information security objectives","Measurable security targets (clause 6.2), e.g. 100% successful restore tests or 100% training completion."],
+ "top-management":["Top management","The people who direct and control the organisation at the highest level – here the Managing Director (and CTO for the ISMS)."],
+ "documented-info":["Documented information","Information an organisation must control and keep: policies and procedures (documents) and evidence of what happened (records)."],
+ "internal-audit":["Internal audit","An audit the organisation arranges on itself (clause 9.2) to check its ISMS works. SafeStore used an independent external auditor."],
+ "management-review":["Management review","A regular top-management meeting (clause 9.3) to review ISMS performance and decide improvements."],
+ "nc":["Nonconformity (NC)","A requirement is not fulfilled. Graded major or minor by the certification body's criteria."],
+ "ofi":["OFI (Opportunity for improvement)","No requirement is broken, but the evidence shows something could be improved. No formal response is required."],
+ "corrective-action":["Corrective action","Action to remove the cause of a nonconformity so it doesn't happen again (clause 10.2)."],
+ "correction":["Correction","Action to fix the immediate problem, e.g. wiping the three devices. It doesn't stop a repeat by itself."],
+ "root-cause":["Root cause","The underlying reason a problem happened. Fixing it prevents a repeat."],
+ "extent":["Extent","How far the same problem or cause reaches – other areas, risks or records that may be affected."],
+ "effectiveness":["Effectiveness","Whether an action actually achieved its intended result over time, shown by new evidence."],
+ "cb":["Certification body (CB)","An independent, accredited organisation that audits and certifies management systems. It makes the certification decision, not the audit team."],
+ "cert-decision":["Certification decision","The CB's decision to grant, refuse or delay certification, made by people independent of the audit team after reviewing the report."],
+ "lead-auditor":["Lead Auditor","The auditor who leads the audit team: plans, assigns work, chairs meetings, decides findings and is responsible for the report."],
+ "stage1":["Stage 1 audit","The first certification step: checks the ISMS design, documents and readiness for Stage 2."],
+ "stage2":["Stage 2 audit","The main certification audit: checks that the ISMS is implemented and effective in practice."],
+ "surveillance":["Surveillance audit","A smaller audit held at least yearly between certification and recertification to confirm the ISMS is still working."],
+ "evidence":["Audit evidence","Records, statements of fact or other information that are relevant to the criteria and can be verified."],
+ "finding":["Audit finding","The result of comparing evidence with criteria: conformity, nonconformity or OFI."],
+ "conclusion":["Audit conclusion","The outcome of the audit, based on all the findings and the objectives."],
+ "audit-plan":["Audit plan","The description of the activities and arrangements for one audit: objectives, scope, criteria, schedule, team, methods, sampling, risks, communication, confidentiality and reporting."],
+ "feasibility":["Feasibility","Whether the audit can achieve its objectives given the time, people, information, access and cooperation available."],
+ "sampling":["Sampling","Checking a selection of items from a population to draw conclusions about the whole."],
+ "population":["Population","The full set of items a sample is drawn from, e.g. all user accounts or all backup logs."],
+ "judgement-sampling":["Judgement-based sampling","The auditor selects items using knowledge, experience and risk. Common in small, short audits."],
+ "statistical-sampling":["Statistical sampling","Random selection with a sample size set mathematically, so results can be projected with a known confidence."],
+ "sampling-risk":["Sampling risk","The risk that the sample doesn't represent the population, leading to a wrong conclusion."],
+ "opening-meeting":["Opening meeting","The first meeting of the audit, where the plan is confirmed, the team introduced and arrangements agreed."],
+ "closing-meeting":["Closing meeting","The final meeting, where findings, conclusions, the recommendation and next steps are presented."],
+ "working-papers":["Working papers","The auditor's notes and records of evidence, samples and reasoning, kept under the CB's confidentiality rules."],
+ "competence":["Competence","Being able to apply knowledge and skills to get the intended results."],
+ "impartiality":["Impartiality","Being objective – free from bias, conflicts of interest or influence."],
+ "self-review":["Self-review threat","The risk that an auditor judges work they produced or helped design."],
+ "familiarity":["Familiarity threat","The risk that a close relationship makes an auditor too trusting or too lenient."],
+ "diverging":["Diverging opinion","A disagreement between the audit team and the auditee (or within the team) that can't be resolved. It is recorded in the report."],
+ "consultancy":["Consultancy","Giving advice on how to design or fix a management system. Certification auditors must not do this, because it threatens impartiality."],
+ "positive-practice":["Positive practice","Something done particularly well that is worth recognising in the report."],
+ "privacy-act":["Privacy Act 1988 (Cth)","Australia's main privacy law, covering how organisations handle personal information."],
+ "app":["APPs (Australian Privacy Principles)","The 13 principles under the Privacy Act. APP 11 requires personal information to be protected and destroyed or de-identified when no longer needed."],
+ "ndb":["NDB scheme","The Notifiable Data Breaches scheme: eligible breaches likely to cause serious harm must be reported to the affected people and the OAIC."],
+ "e8":["ASD Essential Eight","Australian Signals Directorate guidance on eight mitigation strategies (patching, MFA, backups and others). Voluntary for SafeStore, so it is not an audit criterion."],
+ "data-validation":["Data validation (Excel)","The Excel feature that creates drop-down lists and restricts what can be entered in a cell."],
+ "cpd":["CPD","Continuing Professional Development – logged learning that keeps an auditor's competence current."]
+};
+// popover
+const pop=document.getElementById('pop');
+function showPop(el){
+  const d=G[el.dataset.k]; if(!d){return}
+  pop.innerHTML='<b>'+d[0]+'</b><br>'+d[1]+'<br><a href="#g-'+el.dataset.k+'">Open in glossary →</a>';
+  pop.style.display='block';
+  const r=el.getBoundingClientRect(); const pw=Math.min(340,window.innerWidth-32);
+  let left=window.scrollX+r.left; if(left+pw>window.scrollX+window.innerWidth-16) left=window.scrollX+window.innerWidth-pw-16;
+  pop.style.left=Math.max(16,left)+'px'; pop.style.top=(window.scrollY+r.bottom+8)+'px'; pop.style.maxWidth=pw+'px';
+}
+document.querySelectorAll('.t').forEach(el=>{
+  el.tabIndex=0; el.setAttribute('role','button');
+  el.addEventListener('click',e=>{e.stopPropagation();showPop(el)});
+  el.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();showPop(el)}});
+  el.addEventListener('mouseenter',()=>{if(window.matchMedia('(hover:hover)').matches)showPop(el)});
+});
+document.addEventListener('click',e=>{if(!pop.contains(e.target))pop.style.display='none'});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')pop.style.display='none'});
+// glossary list
+const gl=document.getElementById('glist');
+Object.entries(G).sort((a,b)=>a[1][0].localeCompare(b[1][0])).forEach(([k,v])=>{
+  const dt=document.createElement('dt');dt.id='g-'+k;dt.textContent=v[0];
+  const dd=document.createElement('dd');dd.textContent=v[1];gl.append(dt,dd);
+});
+document.getElementById('gsearch').addEventListener('input',e=>{
+  const q=e.target.value.toLowerCase();
+  gl.querySelectorAll('dt').forEach(dt=>{const dd=dt.nextElementSibling;const m=(dt.textContent+' '+dd.textContent).toLowerCase().includes(q);dt.style.display=dd.style.display=m?'':'none'});
+});
+// storage helpers
+function sget(k){try{return localStorage.getItem(k)}catch(e){return null}}
+function sset(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+// TOC + progress
+const secs=[...document.querySelectorAll('section.ch')];
+const toc=document.getElementById('toc');
+secs.forEach(s=>{const li=document.createElement('li');li.innerHTML='<a href="#'+s.id+'" data-id="'+s.id+'"><span class="tick"></span>'+s.dataset.title+'</a>';toc.append(li)});
+let done={}; try{done=JSON.parse(sget('ssguide-done')||'{}')}catch(e){done={}}
+function renderProgress(){
+  let n=0; secs.forEach(s=>{const d=!!done[s.id]; if(d)n++; const a=toc.querySelector('a[data-id="'+s.id+'"] .tick'); a.textContent=d?'✓':'';});
+  document.getElementById('pbar').style.width=(100*n/secs.length)+'%';
+  document.getElementById('ptext').textContent=n+' of '+secs.length+' chapters done';
+}
+document.querySelectorAll('input.done').forEach(cb=>{
+  cb.checked=!!done[cb.dataset.id];
+  cb.addEventListener('change',()=>{done[cb.dataset.id]=cb.checked;sset('ssguide-done',JSON.stringify(done));renderProgress()});
+});
+document.getElementById('resetBtn').addEventListener('click',()=>{done={};sset('ssguide-done','{}');document.querySelectorAll('input.done').forEach(c=>c.checked=false);renderProgress()});
+renderProgress();
+// active section highlight
+const io=new IntersectionObserver(es=>{es.forEach(e=>{if(e.isIntersecting){toc.querySelectorAll('a').forEach(a=>a.classList.toggle('active',a.dataset.id===e.target.id))}})},{rootMargin:'-30% 0px -60% 0px'});
+secs.forEach(s=>io.observe(s));
+// mobile menu
+const side=document.getElementById('side');
+document.getElementById('menuBtn').addEventListener('click',()=>side.classList.toggle('open'));
+toc.addEventListener('click',()=>side.classList.remove('open'));
+// theme
+const root=document.documentElement; const saved=sget('ssguide-theme'); if(saved)root.dataset.theme=saved;
+document.getElementById('themeBtn').addEventListener('click',()=>{
+  const dark=root.dataset.theme?root.dataset.theme==='dark':window.matchMedia('(prefers-color-scheme: dark)').matches;
+  root.dataset.theme=dark?'light':'dark'; sset('ssguide-theme',root.dataset.theme);
+});
+// quiz
+const Q=[
+ ["Which of these is a valid audit OBJECTIVE?",["Review SafeStore's documentation","Determine conformity of the ISMS with ISO/IEC 27001 clauses 4–10","Interview the CTO","Use screenshots"],1,"Reviewing documents, interviewing and screenshots are METHODS. An objective states the result the audit is after."],
+ ["The draft plan listed 'A.8.28 Secure disposal'. What is correct?",["A.8.28 is right","Secure disposal is A.7.14; A.8.28 is secure coding","Secure disposal is A.8.13","Secure disposal is A.5.22"],1,"Always check control numbers against the SoA. A.7.14 is 'Secure disposal or re-use of equipment'."],
+ ["Who makes the certification decision?",["The Lead Auditor","SafeStore's Managing Director","The certification body","The Technical Auditor"],2,"The audit team recommends; the CB decides."],
+ ["Why is N1 graded MINOR rather than major?",["Because SafeStore asked nicely","It's a single, isolated gap: the devices are secured, none disposed of, and no systemic failure","Because disposal controls never matter","Because there was no evidence"],1,"Grade by extent and significance, using the CB's criteria."],
+ ["Suppliers are reviewed only at contract renewal. Why is this an OFI and not an NC?",["Suppliers are out of scope","No requirement demands a documented schedule, and reviews do happen – so nothing is broken","The CTO disagreed","It was found too late"],1,"An OFI means no nonconformity is shown, but improvement is possible."],
+ ["An undated training dashboard screenshot is…",["Reliable, sufficient evidence","Not reliable enough on its own – verify with dated records or other sources","Proof of nonconformity","Irrelevant"],1,"Evidence must be relevant, reliable and sufficient. If it can't be verified, state a limitation."],
+ ["SafeStore wiped the three devices and approved the procedure. Status?",["Closed","Effectiveness review required","Ineffective","Major NC"],1,"Implementation is verified, but effectiveness needs time and new records – checked at surveillance."],
+ ["A SafeStore manager offers an expensive gift. Best action?",["Accept and share it with the team","Decline politely, record the decision, inform the CB","Accept but don't tell anyone","Ask for a cheaper gift"],1,"Gifts threaten impartiality. Decline and record."]
+];
+const qb=document.getElementById('quizBox');
+Q.forEach((q,i)=>{
+  const d=document.createElement('div');d.className='q';
+  d.innerHTML='<b>Q'+(i+1)+'. '+q[0]+'</b><div class="opts"></div><div class="fb"></div>';
+  const o=d.querySelector('.opts'),fb=d.querySelector('.fb');
+  q[1].forEach((t,j)=>{const b=document.createElement('button');b.textContent=t;b.onclick=()=>{
+    o.querySelectorAll('button').forEach(x=>x.classList.remove('right','wrong'));
+    b.classList.add(j===q[2]?'right':'wrong'); if(j!==q[2])o.children[q[2]].classList.add('right');
+    fb.textContent=(j===q[2]?'Correct. ':'Not quite. ')+q[3];};o.append(b)});
+  qb.append(d);
+});
+</script>
+</body>
+</html>
