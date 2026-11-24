@@ -77,7 +77,7 @@ Having completed its Stage 1 audit, the company was seeking ISO/IEC 27001:2022 c
 | Checklist, sampling record, findings, debrief and SoA review | [`workbooks/SafeStore_Student_Workbook_Stage3_Conduct_COMPLETED.xlsx`](workbooks/SafeStore_Student_Workbook_Stage3_Conduct_COMPLETED.xlsx) |
 | Closing meeting, final audit report and corrective-action record | [`workbooks/SafeStore_Student_Workbook_Stage4_Report_and_Close_COMPLETED.xlsx`](workbooks/SafeStore_Student_Workbook_Stage4_Report_and_Close_COMPLETED.xlsx) |
 | Ethics scenarios, self-evaluation and reflection | [`workbooks/SafeStore_Student_Workbook_Stage5_Professional_Behaviour_COMPLETED.xlsx`](workbooks/SafeStore_Student_Workbook_Stage5_Professional_Behaviour_COMPLETED.xlsx) |
-| **Interactive learning guide** | [`SafeStore_Lead_Auditor_Learning_Guide.html`](SafeStore_Lead_Auditor_Learning_Guide.html) · [View online](https://uchemanuels.github.io/grc-portfolio/01-iso27001-isms-development/SafeStore_Lead_Auditor_Learning_Guide.html) |
+| **Interactive learning guide** | [`SafeStore_Lead_Auditor_Learning_Guide.html`](SafeStore_Lead_Auditor_Learning_Guide.html) · [View online](https://uchemanuels.github.io/grc-portfolio/01-iso27001-lead-auditor-case-study/SafeStore_Lead_Auditor_Learning_Guide.html) |
 
 The workbooks are Excel files – download them to view. GitHub can't preview `.xlsx` files.
 
